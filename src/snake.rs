@@ -1,147 +1,161 @@
 use crate::*;
 
+const DIR_RIGHT: Vec2 = vec2(1.0, 0.0);
+const DIR_LEFT: Vec2 = vec2(-1.0, 0.0);
+const DIR_UP: Vec2 = vec2(0.0, 1.0);
+const DIR_DOWN: Vec2 = vec2(0.0, -1.0);
+
 pub struct Snake {
-    cells: Vec<IVec2>,
-    direction: Direction,
-    direction_queue: Vec<Direction>,
-    apple: IVec2,
-    score: usize,
+    head: Vec2,
+    direction: Vec2,
+    len: f32,
+    tail_len: f32,
+    target_len: f32,
+    turns: Vec<(Vec2, Vec2)>,
 }
 
 impl Snake {
-    pub fn new() -> Self {
-        Self {
-            cells: vec![ivec2(0, 0)],
-            direction: Direction::Right,
-            direction_queue: Vec::new(),
-            apple: gen_apple(),
-            score: 0,
+    pub fn handle_input(&mut self) {
+        let new_direction = if is_key_pressed(KeyCode::D) || is_key_pressed(KeyCode::Right) {
+            DIR_RIGHT
+        } else if is_key_pressed(KeyCode::A) || is_key_pressed(KeyCode::Left) {
+            DIR_LEFT
+        } else if is_key_pressed(KeyCode::W) || is_key_pressed(KeyCode::Up) {
+            DIR_DOWN
+        } else if is_key_pressed(KeyCode::S) || is_key_pressed(KeyCode::Down) {
+            DIR_UP
+        } else {
+            return;
+        };
+
+        if self.direction == new_direction || self.direction + new_direction == Vec2::ZERO {
+            return;
         }
+
+        let turn = (self.head, Vec2::ZERO - self.direction);
+        self.turns.insert(0, turn);
+        self.direction = new_direction;
     }
 
     pub fn update(&mut self) {
-        if is_key_pressed(KeyCode::D) || is_key_pressed(KeyCode::Right) {
-            self.direction_queue.push(Direction::Right);
-        } else if is_key_pressed(KeyCode::A) || is_key_pressed(KeyCode::Left) {
-            self.direction_queue.push(Direction::Left);
-        } else if is_key_pressed(KeyCode::W) || is_key_pressed(KeyCode::Up) {
-            self.direction_queue.push(Direction::Down);
-        } else if is_key_pressed(KeyCode::S) || is_key_pressed(KeyCode::Down) {
-            self.direction_queue.push(Direction::Up);
-        }
-    }
+        self.len += (self.target_len - self.len) * get_frame_time() * SNAKE_SPEED;
+        self.head += self.direction * SNAKE_SPEED;
 
-    pub fn fixed_update(&mut self) -> bool {
-        while !self.direction_queue.is_empty() {
-            let new = self.direction_queue.remove(0);
+        let mut prev = self.head;
+        let mut len = self.len;
 
-            if self.direction.can_change_to(new) {
-                self.direction = new;
+        for i in 0..self.turns.len() {
+            let turn = self.turns[i];
+            let diff = (turn.0 - prev).abs();
+            let segment_len = diff.x.max(diff.y);
+
+            if segment_len > len {
+                while self.turns.pop() != Some(turn) {}
                 break;
             }
+
+            len -= segment_len;
+            prev = turn.0;
         }
 
-        for i in (0..self.cells.len()).rev() {
-            match i {
-                0 => self.cells[0] += self.direction.to_ivec2(),
-                _ => {
-                    if self.cells[i] != self.cells[i - 1] {
-                        self.cells[i] = self.cells[i - 1];
-                    }
-                },
-            }
-
-            let cell = &mut self.cells[i];
-
-            if cell.x < 0 {
-                cell.x = CELLS - 1;
-            } else if cell.x >= CELLS {
-                cell.x = 0;
-            }
-
-            if cell.y < 0 {
-                cell.y = CELLS - 1;
-            } else if cell.y >= CELLS {
-                cell.y = 0;
-            }
-        }
-
-        if self.cells[0] == self.apple {
-            self.apple = gen_apple();
-            self.score += 1;
-
-            let last = self.cells.last().unwrap();
-            self.cells.push(*last);
-        } else {
-            for i in 1..self.cells.len() {
-                if self.cells[i] == self.cells[0] {
-                    return false;
-                }
-            }
-        }
-
-        true
+        self.tail_len = len;
     }
 
     pub fn draw(&self) {
-        for i in 0..self.cells.len() {
-            let color = if i == 0 {
-                Color::from_rgba(238, 212, 159, 255)
-            } else {
-                if i % 2 == 0 {
-                    Color::from_rgba(244, 219, 214, 255)
-                } else {
-                    Color::from_rgba(183, 189, 248, 255)
-                }
-            };
+        let mut prev = &(self.head, Vec2::ZERO - self.direction);
 
-            draw_rectangle(
-                self.cells[i].x as f32 * CELL_SIZE,
-                self.cells[i].y as f32 * CELL_SIZE,
-                CELL_SIZE,
-                CELL_SIZE,
-                color,
-            );
+        for (i, turn) in self.turns.iter().enumerate() {
+            let color = get_segment_color(i);
+
+            draw_circle(prev.0.x, prev.0.y, SNAKE_WIDTH / 2.0, color);
+            draw_line(prev.0.x, prev.0.y, turn.0.x, turn.0.y, SNAKE_WIDTH, color);
+
+            prev = turn;
         }
 
-        draw_rectangle(
-            self.apple.x as f32 * CELL_SIZE,
-            self.apple.y as f32 * CELL_SIZE,
-            CELL_SIZE,
-            CELL_SIZE,
-            Color::from_rgba(237, 135, 150, 255),
-        );
+        let color = get_segment_color(self.turns.len());
+        let end = prev.0 + prev.1 * self.tail_len;
 
-        draw_text(
-            &self.score.to_string(),
-            20.0,
-            WINDOW_SIZE as f32 - 20.0,
-            72.0,
-            Color::from_rgba(202, 211, 245, 255),
-        );
+        draw_circle(prev.0.x, prev.0.y, SNAKE_WIDTH / 2.0, color);
+        draw_line(prev.0.x, prev.0.y, end.x, end.y, SNAKE_WIDTH, color);
+        draw_circle(end.x, end.y, SNAKE_WIDTH / 2.0, color);
+    }
+
+    pub fn grow(&mut self) {
+        self.target_len += SNAKE_GROW_AMOUNT;
+    }
+
+    pub fn dead(&self) -> bool {
+        if self.head.x < 0.0
+            || self.head.x > WINDOW_SIZE
+            || self.head.y < 0.0
+            || self.head.y > WINDOW_SIZE
+        {
+            return true;
+        }
+
+        for i in 1..self.turns.len() {
+            let prev = self.turns[i - 1].0;
+            let turn = self.turns[i].0;
+
+            if head_overlaps_with_segment(self.head, prev, turn) {
+                return true;
+            }
+        }
+
+        if self.turns.len() > 0 {
+            let prev = self.turns[self.turns.len() - 1];
+
+            if head_overlaps_with_segment(self.head, prev.0, prev.0 + prev.1 * self.tail_len) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn hits_apple(&self, apple: Vec2) -> bool {
+        (self.head - apple).abs().length() < SNAKE_WIDTH * 1.5
     }
 }
 
-#[derive(Default, Clone, Copy)]
-enum Direction {
-    #[default]
-    Right,
-    Left,
-    Up,
-    Down,
-}
-
-impl Direction {
-    fn to_ivec2(self) -> IVec2 {
-        match self {
-            Self::Right => ivec2(1, 0),
-            Self::Left => ivec2(-1, 0),
-            Self::Up => ivec2(0, 1),
-            Self::Down => ivec2(0, -1),
+impl Default for Snake {
+    fn default() -> Self {
+        Self {
+            head: Vec2::ONE * 15.0,
+            direction: DIR_RIGHT,
+            len: 0.0,
+            tail_len: 0.0,
+            target_len: 65.0,
+            turns: Vec::new(),
         }
     }
+}
 
-    fn can_change_to(&self, new: Self) -> bool {
-        ((*self as isize) < 2) ^ ((new as isize) < 2)
+#[inline]
+fn get_segment_color(segment_index: usize) -> Color {
+    if segment_index % 2 == 0 {
+        return COLOR_EVEN;
     }
+
+    COLOR_ODD
+}
+
+#[inline]
+fn head_overlaps_with_segment(head: Vec2, segment_start: Vec2, segment_end: Vec2) -> bool {
+    let min_x = segment_start.x.min(segment_end.x);
+    let max_x = segment_start.x.max(segment_end.x);
+
+    if head.x > min_x && head.x < max_x && (head.y - segment_start.y).abs() <= SNAKE_WIDTH {
+        return true;
+    }
+
+    let min_y = segment_start.y.min(segment_end.y);
+    let max_y = segment_start.y.max(segment_end.y);
+
+    if head.y > min_y && head.y < max_y && (head.x - segment_start.x).abs() <= SNAKE_WIDTH {
+        return true;
+    }
+
+    false
 }
