@@ -8,10 +8,10 @@ const DIR_DOWN: Vec2 = vec2(0.0, -1.0);
 pub struct Snake {
     head: Vec2,
     direction: Vec2,
+    turns: Vec<Turn>,
     len: f32,
-    tail_len: f32,
     target_len: f32,
-    turns: Vec<(Vec2, Vec2)>,
+    tail_len: f32,
 }
 
 impl Snake {
@@ -32,52 +32,66 @@ impl Snake {
             return;
         }
 
-        let turn = (self.head, Vec2::ZERO - self.direction);
-        self.turns.insert(0, turn);
+        let turn = Turn {
+            pos: self.head,
+            dir: Vec2::ZERO - self.direction,
+        };
+
         self.direction = new_direction;
+        self.turns.insert(0, turn);
     }
 
     pub fn update(&mut self) {
-        self.len += (self.target_len - self.len) * get_frame_time() * SNAKE_SPEED;
         self.head += self.direction * SNAKE_SPEED;
+        self.len += (self.target_len - self.len) * SNAKE_SPEED * get_frame_time();
 
         let mut prev = self.head;
         let mut len = self.len;
 
         for i in 0..self.turns.len() {
             let turn = self.turns[i];
-            let diff = (turn.0 - prev).abs();
+            let diff = (turn.pos - prev).abs();
             let segment_len = diff.x.max(diff.y);
 
             if segment_len > len {
-                while self.turns.pop() != Some(turn) {}
+                self.turns.pop();
                 break;
             }
 
             len -= segment_len;
-            prev = turn.0;
+            prev = turn.pos;
         }
 
         self.tail_len = len;
     }
 
     pub fn draw(&self) {
-        let mut prev = &(self.head, Vec2::ZERO - self.direction);
+        let mut prev = &Turn {
+            pos: self.head,
+            dir: Vec2::ZERO - self.direction,
+        };
 
         for (i, turn) in self.turns.iter().enumerate() {
             let color = get_segment_color(i);
 
-            draw_circle(prev.0.x, prev.0.y, SNAKE_WIDTH / 2.0, color);
-            draw_line(prev.0.x, prev.0.y, turn.0.x, turn.0.y, SNAKE_WIDTH, color);
+            draw_circle(prev.pos.x, prev.pos.y, SNAKE_WIDTH / 2.0, color);
+            draw_line(
+                prev.pos.x,
+                prev.pos.y,
+                turn.pos.x,
+                turn.pos.y,
+                SNAKE_WIDTH,
+                color,
+            );
 
             prev = turn;
         }
 
         let color = get_segment_color(self.turns.len());
-        let end = prev.0 + prev.1 * self.tail_len;
+        let end = prev.pos + prev.dir * self.tail_len;
 
-        draw_circle(prev.0.x, prev.0.y, SNAKE_WIDTH / 2.0, color);
-        draw_line(prev.0.x, prev.0.y, end.x, end.y, SNAKE_WIDTH, color);
+        draw_circle(prev.pos.x, prev.pos.y, SNAKE_WIDTH / 2.0, color);
+        draw_line(prev.pos.x, prev.pos.y, end.x, end.y, SNAKE_WIDTH, color);
         draw_circle(end.x, end.y, SNAKE_WIDTH / 2.0, color);
     }
 
@@ -94,19 +108,21 @@ impl Snake {
             return true;
         }
 
-        for i in 1..self.turns.len() {
-            let prev = self.turns[i - 1].0;
-            let turn = self.turns[i].0;
-
-            if head_overlaps_with_segment(self.head, prev, turn) {
+        for [prev, cur] in self.turns.windows(2).skip(1) {
+            if head_overlaps_with_segment(self.head, prev.pos, cur.pos) {
                 return true;
             }
         }
 
-        if self.turns.len() > 0 {
+        if !self.turns.is_empty() {
             let prev = self.turns[self.turns.len() - 1];
+            let overlaps = head_overlaps_with_segment(
+                self.head,
+                prev.pos,
+                prev.pos + prev.dir * self.tail_len,
+            );
 
-            if head_overlaps_with_segment(self.head, prev.0, prev.0 + prev.1 * self.tail_len) {
+            if overlaps {
                 return true;
             }
         }
@@ -124,12 +140,17 @@ impl Default for Snake {
         Self {
             head: Vec2::ONE * 15.0,
             direction: DIR_RIGHT,
-            len: 0.0,
-            tail_len: 0.0,
-            target_len: 65.0,
             turns: Vec::new(),
+            len: 0.0,
+            target_len: 65.0,
+            tail_len: 65.0,
         }
     }
+}
+
+struct Turn {
+    pos: Vec2,
+    dir: Vec2,
 }
 
 #[inline]

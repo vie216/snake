@@ -22,7 +22,7 @@ async fn main() {
         .expect("Time went backwards!");
     rand::srand(time.as_secs());
 
-    let mut state = GameState::new();
+    let mut state = GameState::default();
 
     loop {
         clear_background(COLOR_BG);
@@ -59,7 +59,7 @@ async fn main() {
             },
             GameState::GameOver => {
                 if is_key_pressed(KeyCode::Enter) {
-                    state = GameState::new();
+                    state = GameState::default();
                 }
 
                 draw_text_centered("Game Over", 72.0, 0.0, -22.0);
@@ -80,8 +80,8 @@ enum GameState {
     GameOver,
 }
 
-impl GameState {
-    fn new() -> Self {
+impl Default for GameState {
+    fn default() -> Self {
         Self::Main {
             snake: Snake::default(),
             apple: gen_apple(),
