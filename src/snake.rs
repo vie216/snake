@@ -6,12 +6,9 @@ const DIR_UP: Vec2 = vec2(0.0, 1.0);
 const DIR_DOWN: Vec2 = vec2(0.0, -1.0);
 
 pub struct Snake {
-    head: Vec2,
+    parts: Vec<Part>,
     direction: Vec2,
-    turns: Vec<Turn>,
-    len: f32,
-    target_len: f32,
-    tail_len: f32,
+    tail_growth_reserve: f32,
 }
 
 impl Snake {
@@ -32,97 +29,76 @@ impl Snake {
             return;
         }
 
-        let turn = Turn {
-            pos: self.head,
-            dir: Vec2::ZERO - self.direction,
-        };
+        let new_head = Part::new(self.head().pos, -new_direction, 0.0);
 
+        self.parts.insert(0, new_head);
         self.direction = new_direction;
-        self.turns.insert(0, turn);
     }
 
     pub fn update(&mut self) {
-        self.head += self.direction * SNAKE_SPEED;
-        self.len += (self.target_len - self.len) * SNAKE_SPEED * get_frame_time();
+        let direction = self.direction;
+        self.head_mut().pos += direction * SNAKE_SPEED;
 
-        let mut prev = self.head;
-        let mut len = self.len;
+        let delta = self.tail_growth_reserve * SNAKE_SPEED * get_frame_time();
+        self.tail_growth_reserve -= delta;
+        self.tail_mut().len += delta;
 
-        for i in 0..self.turns.len() {
-            let turn = self.turns[i];
-            let diff = (turn.pos - prev).abs();
-            let segment_len = diff.x.max(diff.y);
+        if self.parts.len() > 1 {
+            self.head_mut().len += SNAKE_SPEED;
+            self.tail_mut().len -= SNAKE_SPEED;
 
-            if segment_len > len {
-                self.turns.pop();
-                break;
+            if self.tail().len <= 0.0 {
+                self.parts.pop();
             }
-
-            len -= segment_len;
-            prev = turn.pos;
         }
-
-        self.tail_len = len;
     }
 
     pub fn draw(&self) {
-        let mut prev = &Turn {
-            pos: self.head,
-            dir: Vec2::ZERO - self.direction,
-        };
+        for (i, part) in self.parts.iter().enumerate() {
+            let part_end = part.end();
+            let color = if i % 2 == 0 { COLOR_EVEN } else { COLOR_ODD };
 
-        for (i, turn) in self.turns.iter().enumerate() {
-            let color = get_segment_color(i);
-
-            draw_circle(prev.pos.x, prev.pos.y, SNAKE_WIDTH / 2.0, color);
+            draw_circle(part.pos.x, part.pos.y, SNAKE_WIDTH / 2.0, color);
             draw_line(
-                prev.pos.x,
-                prev.pos.y,
-                turn.pos.x,
-                turn.pos.y,
+                part.pos.x,
+                part.pos.y,
+                part_end.x,
+                part_end.y,
                 SNAKE_WIDTH,
                 color,
             );
 
-            prev = turn;
+            if part == self.tail() {
+                draw_circle(part_end.x, part_end.y, SNAKE_WIDTH / 2.0, color);
+            }
         }
-
-        let color = get_segment_color(self.turns.len());
-        let end = prev.pos + prev.dir * self.tail_len;
-
-        draw_circle(prev.pos.x, prev.pos.y, SNAKE_WIDTH / 2.0, color);
-        draw_line(prev.pos.x, prev.pos.y, end.x, end.y, SNAKE_WIDTH, color);
-        draw_circle(end.x, end.y, SNAKE_WIDTH / 2.0, color);
     }
 
     pub fn grow(&mut self) {
-        self.target_len += SNAKE_GROW_AMOUNT;
+        self.tail_growth_reserve += SNAKE_GROW_AMOUNT;
     }
 
     pub fn dead(&self) -> bool {
-        if self.head.x < 0.0
-            || self.head.x > WINDOW_SIZE
-            || self.head.y < 0.0
-            || self.head.y > WINDOW_SIZE
-        {
+        let head = self.head().pos;
+
+        if head.x < 0.0 || head.x > WINDOW_SIZE || head.y < 0.0 || head.y > WINDOW_SIZE {
             return true;
         }
 
-        for [prev, cur] in self.turns.windows(2).skip(1) {
-            if head_overlaps_with_segment(self.head, prev.pos, cur.pos) {
+        for part in &self.parts {
+            let part_end = part.end();
+
+            let min_x = part.pos.x.min(part_end.x);
+            let max_x = part.pos.x.max(part_end.x);
+
+            if head.x > min_x && head.x < max_x && (head.y - part.pos.y).abs() <= SNAKE_WIDTH {
                 return true;
             }
-        }
 
-        if !self.turns.is_empty() {
-            let prev = self.turns[self.turns.len() - 1];
-            let overlaps = head_overlaps_with_segment(
-                self.head,
-                prev.pos,
-                prev.pos + prev.dir * self.tail_len,
-            );
+            let min_y = part.pos.y.min(part_end.y);
+            let max_y = part.pos.y.max(part_end.y);
 
-            if overlaps {
+            if head.y > min_y && head.y < max_y && (head.x - part.pos.x).abs() <= SNAKE_WIDTH {
                 return true;
             }
         }
@@ -131,52 +107,50 @@ impl Snake {
     }
 
     pub fn hits_apple(&self, apple: Vec2) -> bool {
-        (self.head - apple).abs().length() < SNAKE_WIDTH * 1.5
+        (self.head().pos - apple).abs().length() < SNAKE_WIDTH * 1.5
+    }
+
+    fn head(&self) -> &Part {
+        &self.parts[0]
+    }
+
+    fn head_mut(&mut self) -> &mut Part {
+        &mut self.parts[0]
+    }
+
+    fn tail(&self) -> &Part {
+        &self.parts[self.parts.len() - 1]
+    }
+
+    fn tail_mut(&mut self) -> &mut Part {
+        let i = self.parts.len() - 1;
+        &mut self.parts[i]
     }
 }
 
 impl Default for Snake {
     fn default() -> Self {
         Self {
-            head: Vec2::ONE * 15.0,
+            parts: vec![Part::new(Vec2::ONE * 15.0, DIR_LEFT, 0.0)],
             direction: DIR_RIGHT,
-            turns: Vec::new(),
-            len: 0.0,
-            target_len: 65.0,
-            tail_len: 65.0,
+            tail_growth_reserve: 65.0,
         }
     }
 }
 
-struct Turn {
+#[derive(PartialEq)]
+struct Part {
     pos: Vec2,
     dir: Vec2,
+    len: f32,
 }
 
-#[inline]
-fn get_segment_color(segment_index: usize) -> Color {
-    if segment_index % 2 == 0 {
-        return COLOR_EVEN;
+impl Part {
+    fn new(pos: Vec2, dir: Vec2, len: f32) -> Self {
+        Self { pos, dir, len }
     }
 
-    COLOR_ODD
-}
-
-#[inline]
-fn head_overlaps_with_segment(head: Vec2, segment_start: Vec2, segment_end: Vec2) -> bool {
-    let min_x = segment_start.x.min(segment_end.x);
-    let max_x = segment_start.x.max(segment_end.x);
-
-    if head.x > min_x && head.x < max_x && (head.y - segment_start.y).abs() <= SNAKE_WIDTH {
-        return true;
+    fn end(&self) -> Vec2 {
+        self.pos + self.dir * self.len
     }
-
-    let min_y = segment_start.y.min(segment_end.y);
-    let max_y = segment_start.y.max(segment_end.y);
-
-    if head.y > min_y && head.y < max_y && (head.x - segment_start.x).abs() <= SNAKE_WIDTH {
-        return true;
-    }
-
-    false
 }
