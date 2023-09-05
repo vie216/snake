@@ -38,7 +38,7 @@ async fn main() {
                 snake.draw();
 
                 if snake.dead() {
-                    state = GameState::GameOver;
+                    state = GameState::GameOver { score: *score };
                     continue;
                 }
 
@@ -57,13 +57,21 @@ async fn main() {
                     COLOR_TEXT,
                 );
             },
-            GameState::GameOver => {
+            GameState::GameOver { score } => {
                 if is_key_pressed(KeyCode::Enter) {
                     state = GameState::default();
+                    continue;
                 }
 
                 draw_text_centered("Game Over", 72.0, 0.0, -22.0);
                 draw_text_centered("Press Enter to restart", 48.0, 0.0, 22.0);
+                draw_text(
+                    &score.to_string(),
+                    20.0,
+                    WINDOW_SIZE - 20.0,
+                    48.0,
+                    COLOR_TEXT,
+                );
             },
         }
 
@@ -77,7 +85,9 @@ enum GameState {
         apple: Vec2,
         score: usize,
     },
-    GameOver,
+    GameOver {
+        score: usize,
+    },
 }
 
 impl Default for GameState {
