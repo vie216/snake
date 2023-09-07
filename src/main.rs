@@ -4,9 +4,10 @@ use std::time::SystemTime;
 
 mod snake;
 
-const WINDOW_SIZE: f32 = 800.0;
 const SNAKE_WIDTH: f32 = 15.0;
 const SNAKE_SPEED: f32 = 5.0;
+const SNAKE_SPEED_INCREASE_AMOUNT: f32 = 0.1;
+const SNAKE_SPEED_LIMIT: f32 = 10.0;
 const SNAKE_GROW_AMOUNT: f32 = 50.0;
 
 const COLOR_BG: Color = color_u8!(36, 39, 58, 255);
@@ -15,7 +16,7 @@ const COLOR_ODD: Color = color_u8!(183, 189, 248, 255);
 const COLOR_APPLE: Color = color_u8!(237, 135, 150, 255);
 const COLOR_TEXT: Color = color_u8!(202, 211, 245, 255);
 
-#[macroquad::main(config)]
+#[macroquad::main("Snake!")]
 async fn main() {
     let time = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -46,13 +47,14 @@ async fn main() {
                     *apple = gen_apple();
                     *score += 1;
                     snake.grow();
+                    snake.increase_speed(SNAKE_SPEED_INCREASE_AMOUNT);
                 }
 
                 draw_circle(apple.x, apple.y, SNAKE_WIDTH, COLOR_APPLE);
                 draw_text(
                     &score.to_string(),
                     20.0,
-                    WINDOW_SIZE - 20.0,
+                    screen_height() - 20.0,
                     48.0,
                     COLOR_TEXT,
                 );
@@ -68,7 +70,7 @@ async fn main() {
                 draw_text(
                     &score.to_string(),
                     20.0,
-                    WINDOW_SIZE - 20.0,
+                    screen_height() - 20.0,
                     48.0,
                     COLOR_TEXT,
                 );
@@ -100,20 +102,10 @@ impl Default for GameState {
     }
 }
 
-fn config() -> Conf {
-    Conf {
-        window_title: "Snake!".to_string(),
-        window_width: WINDOW_SIZE as i32,
-        window_height: WINDOW_SIZE as i32,
-        window_resizable: false,
-        ..Default::default()
-    }
-}
-
 fn gen_apple() -> Vec2 {
     vec2(
-        rand::gen_range(SNAKE_WIDTH, WINDOW_SIZE - SNAKE_WIDTH),
-        rand::gen_range(SNAKE_WIDTH, WINDOW_SIZE - SNAKE_WIDTH),
+        rand::gen_range(SNAKE_WIDTH, screen_width() - SNAKE_WIDTH),
+        rand::gen_range(SNAKE_WIDTH, screen_height() - SNAKE_WIDTH),
     )
 }
 

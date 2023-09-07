@@ -8,6 +8,7 @@ const DIR_DOWN: Vec2 = vec2(0.0, -1.0);
 pub struct Snake {
     parts: Vec<Part>,
     direction: Vec2,
+    speed: f32,
     tail_growth_reserve: f32,
 }
 
@@ -37,15 +38,16 @@ impl Snake {
 
     pub fn update(&mut self) {
         let direction = self.direction;
-        self.head_mut().pos += direction * SNAKE_SPEED;
+        let speed = self.speed;
+        self.head_mut().pos += direction * speed;
 
-        let delta = self.tail_growth_reserve * SNAKE_SPEED * get_frame_time();
+        let delta = self.tail_growth_reserve * self.speed * get_frame_time();
         self.tail_growth_reserve -= delta;
         self.tail_mut().len += delta;
 
         if self.parts.len() > 1 {
-            self.head_mut().len += SNAKE_SPEED;
-            self.tail_mut().len -= SNAKE_SPEED;
+            self.head_mut().len += self.speed;
+            self.tail_mut().len -= self.speed;
 
             if self.tail().len <= 0.0 {
                 self.parts.pop();
@@ -78,10 +80,14 @@ impl Snake {
         self.tail_growth_reserve += SNAKE_GROW_AMOUNT;
     }
 
+    pub fn increase_speed(&mut self, amount: f32) {
+        self.speed = SNAKE_SPEED_LIMIT.min(self.speed + amount);
+    }
+
     pub fn dead(&self) -> bool {
         let head = self.head().pos;
 
-        if head.x < 0.0 || head.x > WINDOW_SIZE || head.y < 0.0 || head.y > WINDOW_SIZE {
+        if head.x < 0.0 || head.x > screen_width() || head.y < 0.0 || head.y > screen_height() {
             return true;
         }
 
@@ -133,6 +139,7 @@ impl Default for Snake {
         Self {
             parts: vec![Part::new(Vec2::ONE * 15.0, DIR_LEFT, 0.0)],
             direction: DIR_RIGHT,
+            speed: SNAKE_SPEED,
             tail_growth_reserve: 65.0,
         }
     }
